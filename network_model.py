@@ -262,7 +262,7 @@ class NetworkModel:
             print("ERROR, TOPOLOGY FILE NOT FOUND")
 
     # prints an evaluation of how much population, internet structure would be affected by a loss of a number of AS
-    def get_service_damage(self, stat_obj, result):
+    def get_service_damage(self, stat_obj, result, logging=False):
 
         # measure the impact of the event on the service
         # rebuilding the topology (for each link remaining we search for a faculty that houses both AS)
@@ -294,16 +294,32 @@ class NetworkModel:
             total_pop += local_pop
             total_internet += local_internet
 
-        #    print(
-        #        "country code: " + str(c) +
-        #        " service lost for " + str(local_pop) + " users, " + str(local_percent) +
-        #        "% of national coverage, totaling " + str(local_internet) + "% of global internet infrastructure")
-
-        #print("total damage: " + str(total_pop) + " users lost service, for " + str(
-        #    total_internet) + "% of the total internet")
+            if logging:
+                print(
+                    "country code: " + str(c) +
+                    " service lost for " + str(local_pop) + " users, " + str(local_percent) +
+                    "% of national coverage, totaling " + str(local_internet) + "% of global internet infrastructure")
+        if logging:
+            print("total damage: " + str(total_pop) + " users lost service, for " + str(
+                total_internet) + "% of the total internet")
 
         stat_obj.user_damage = total_pop
         stat_obj.internet_damage = total_internet
+
+    def process_impact_targets_only(self, targets, logging=False):
+        stats = Stats()
+        starting_links = len(self.linksList)
+        if logging:
+            print("starting links: " + str(starting_links) + "\n")
+
+        result = self.update_topology(targets)
+        self.get_service_damage(stats, result, logging)
+        if logging:
+            remaining = len(self.linksList)
+            print("lost links: " + str(len(result.dead_links)) + "\n")
+            print("remaining links: " + str(remaining) + "\n")
+
+        return stats
 
     def process_impact(self, lat, lon, radius, logging=False, collecting_stats=False, logfile=LOGFILE, ns=100):
         stats = Stats()

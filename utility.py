@@ -1,6 +1,22 @@
 import math
 from haversine import haversine, Unit
 
+#aspl sampled over nsample nodes
+#size of giant component
+#number of disjoint components
+#average node connectivity
+#number of user that lost connection
+#%of the internet users losing connectivity
+
+class Stats:
+    def __init__(self):
+        self.aspl = 0
+        self.size_of_giant_component = 0
+        self.disjoint_components = 0
+        self.nsample = 0
+        self.user_damage = 0
+        self.internet_damage = 0
+
 def get_distance(lat1, lon1, lat2, lon2):
     src = (lat1, lon1)
     dest = (lat2, lon2)

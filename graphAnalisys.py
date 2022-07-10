@@ -2,6 +2,10 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
+from networkx.algorithms import approximation
+import random
+from utility import Stats
+
 
 #takes dictionary of links and facilities
 def plot_topology(linksList, file):
@@ -36,26 +40,16 @@ def plot_topology(linksList, file):
     plt.savefig(file, dpi=2000)
 
 
-#dictionary with links as keys
+#dictionary with links as keys, plots degree population graph
 def test_degree(graph, file):
     G = nx.Graph()
     for e in graph:
         G.add_edge(e[0], e[1])
 
-    #find giant component
-    #Gcc = G.subgraph(sorted(nx.connected_components(G), key=len, reverse=True)[0])
-
     Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
     G0 = G.subgraph(Gcc[0])
 
     n = G0.number_of_nodes()
-    print("size of giant component: " + str(n) + "\n")
-    print("number of connected component: " + str(nx.number_connected_components(G)) + "\n")
-    #for subc in nx.connected_components(G):
-    #    print("average shortest path length for component " + str(subc))
-    #    comp = G.subgraph(subc)
-    #    print(str(nx.average_shortest_path_length(comp)))
-    #print("average node connectivity: " + str(nx.average_node_connectivity(G)) + "\n")
     print("plotting node degree distribution\n")
 
     degree_sequence = sorted((d for n, d in G.degree()), reverse=True)
@@ -85,24 +79,15 @@ def test_degree(graph, file):
     plt.savefig(file)
     plt.close()
 
-#dictionary with links as keys
+#dictionary with links as keys, plots degree distribution for the giant component
 def test_degree_distribution(graph, file):
     G = nx.Graph(node_type=int)
     for e in graph:
         G.add_edge(e[0], e[1])
 
     #find giant component
-    #Gcc = G.subgraph(sorted(nx.connected_components(G), key=len, reverse=True)[0])
-
     Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
     G0 = G.subgraph(Gcc[0])
-
-    n = G.number_of_nodes()
-    n1 = G0.number_of_nodes()
-    print("size of giant component: " + str(n1) + "\n")
-    print("number of connected component: " + str(nx.number_connected_components(G)) + "\n")
-
-    print("plotting node degree distribution\n")
 
     degree_sequence = sorted((d for n, d in G.degree()), reverse=True)
     dmax = max(degree_sequence)
@@ -134,5 +119,77 @@ def test_degree_distribution(graph, file):
 
     plt.tight_layout()
     plt.savefig(file)
+    plt.close()
+
+def get_stats(graph, ns=100):
+    stat = Stats()
+    stat.nsample = ns
+
+    G = nx.Graph(node_type=int)
+    for e in graph:
+        G.add_edge(e[0], e[1])
+
+    #find giant component
+    Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
+    G0 = G.subgraph(Gcc[0])
+
+    n = G.number_of_nodes()
+    stat.size_of_giant_component = nx.number_of_nodes(G0)
+    stat.disjoint_components = nx.number_connected_components(G)
+
+    sampled_conn = random.sample(G0.nodes, ns)
+    sampled_src = random.sample(G0.nodes, ns)
+    sampled_dest = random.sample(G0.nodes, ns)
+    avg = 0
+    count = 0
+    sum = 0
+    for s in sampled_src:
+        for d in sampled_dest:
+            if s != d:
+                dist = nx.shortest_path_length(G0, s, d)
+                count += 1
+                sum += dist
+    avg = sum/count
+    stat.aspl = avg
+    return stat
+
+def plot_stat_variation(statList, filename):
+
+    x = np.array(range(0, len(statList)))
+    y_aspl = []
+    y_sogc = []
+    y_discomp = []
+    y_damage = []
+    for i in statList:
+        y_aspl.append(i.aspl)
+        y_sogc.append(i.size_of_giant_component)
+        y_discomp.append(i.disjoint_components)
+        y_damage.append(i.internet_damage)
+
+    #aspl variation plot
+
+    y = np.array(y_aspl)
+    plt.plot(x, y)
+    plt.savefig("aspl_" + str(filename))
+    plt.close()
+
+    #size of giant component variation plot
+
+    y = np.array(y_sogc)
+    plt.plot(x, y)
+    plt.savefig("giant_component_" + str(filename))
+    plt.close()
+
+    #disjoint components variation
+
+    y = np.array(y_discomp)
+    plt.plot(x, y)
+    plt.savefig("disjoin_components_" + str(filename))
+    plt.close()
+
+    #total internet damage progression
+    y = np.array(y_damage)
+    plt.plot(x, y)
+    plt.savefig("damage_" + str(filename))
     plt.close()
 

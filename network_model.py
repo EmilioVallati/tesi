@@ -1,50 +1,31 @@
 from __future__ import division
 
 from os.path import exists
-import itertools
 import sqlite3
 from sqlite3 import Error
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import networkx as nx
-from itertools import groupby
-from utility import Stats
 
 import graphAnalisys
-from utility import get_distance, read_rebuilt_links, read_full_links
-
-from graphAnalisys import test_degree, plot_topology, test_degree_distribution
+from utility import get_distance, read_rebuilt_links, read_full_links, Config
 
 from population_dataset_extractor import parse_html
-
-#default config
-# population data for AS network
-CUSTOMER_FILE = "Dataset/customers-per-as-measurements.html"
-
-# topology dataset
-RELFILE = 'Dataset/20220601.as-rel.v6-stable.txt'
-# cached topology for quick init
-LINKFILE = 'links.txt'
-# peeringdb facility db
-DBFILE = './Dataset/peeringdb.sqlite3'
-# log file
-LOGFILE = 'log'
-
 
 # collects failed lins and AS after a facility is removed
 class Result:
     def __init__(self):
         self.dead_links = []
         self.dead_AS = []
+        self.users_damage = 0
+        self.internet_damage = 0
 
 class NetworkModel:
-    def __init__(self, cf=CUSTOMER_FILE, rf=RELFILE, lf=LINKFILE, dbf=DBFILE, logf=LOGFILE):
+    def __init__(self, conf_file):
         #file names init
-        self.cf = cf
-        self.rf = rf
-        self.lf = lf
-        self.dbf = dbf
-        self.logf = logf
+        self.cf = conf_file.CUSTOMER_FILE
+        self.rf = conf_file.RELFILE
+        self.lf = conf_file.LINKFILE
+        self.dbf = conf_file.DBFILE
+        self.logf = conf_file.LOGFILE
+        self.ns = conf_file.NUMSAMPLES
 
         # key: fac_id (int) {lat (float), long (float), name (str)}
         self.facilityDict = {}
@@ -72,16 +53,18 @@ class NetworkModel:
         return targets
 
     # returns list of links deleted from topology
-    def remove_facility(self, fac_id):
+    def remove_facility(self, fac_id, logging=False):
         count = 0
         ret = Result()
         if fac_id in self.asnDict:
             del self.asnDict[fac_id]
         for link in self.detectableLinks:
-            # print("looking for " + str(fac_id) + " into " + str(detectableLinks[link]))
+            if logging:
+                print("looking for " + str(fac_id) + " into " + str(self.detectableLinks[link]))
             if fac_id in self.detectableLinks[link]:
                 count += 1
-                # print(str(fac_id) + " fac_id found for link " + str(link))
+                if logging:
+                    print(str(fac_id) + " fac_id found for link " + str(link))
                 self.detectableLinks[link].remove(fac_id)
                 # no more facility for a link means it's dead
                 if len(self.detectableLinks[link]) == 0:
@@ -113,10 +96,11 @@ class NetworkModel:
                 if ll[1] in ee:
                     l2 += 1
 
-            # print("AS " + str(l[0]) + " found in " + str(f1) + " facilities")
-            # print("AS " + str(l[0]) + " found in " + str(l1) + " links")
-            # print("AS " + str(l[1]) + " found in " + str(f2) + " facilities")
-            # print("AS " + str(l[1]) + " found in " + str(l2) + " links")
+            if logging:
+                print("AS " + str(l[0]) + " found in " + str(f1) + " facilities")
+                print("AS " + str(l[0]) + " found in " + str(l1) + " links")
+                print("AS " + str(l[1]) + " found in " + str(f2) + " facilities")
+                print("AS " + str(l[1]) + " found in " + str(l2) + " links")
 
             if f1 == 0 and l1 == 0:
                 ret.dead_AS.append(l[0])
@@ -133,18 +117,35 @@ class NetworkModel:
         # print(str(len(deleted_links)) + " links lost")
         return ret
 
-    def update_topology(self, targets):
-        starting_links = len(self.linksList)
+    #removes target facilities and returns list of dead links and AS
+    def update_topology(self, targets, logging=False):
         # removing facility
         ret1 = Result()
+        long = False
+        cnt = 0
+        if len(targets) >= 100:
+            long = True
         for t in targets:
-            #print("removing facility " + str(t) + "\n")
+            if long:
+                cnt += 1
+                if cnt % (int(len(targets) / 100)) == 0:
+                    percent = int((cnt / len(targets) * 100))
+                    print("progress: " + str(percent) + "%")
+
+            if logging:
+                print("removing facility " + str(t) + "\n")
             ret = self.remove_facility(t)
             # collect dead links for statistics
             for l in ret.dead_links:
                 ret1.dead_links.append(l)
             for a in ret.dead_AS:
                 ret1.dead_AS.append(a)
+        #measuring damage
+        ret1 = self.get_service_damage(ret1)
+        if logging:
+            print("total damage: " + str(ret1.users_damage) + " users lost service, for " + str(
+                ret1.internet_damage) + "% of the total internet")
+
         return ret1
 
 
@@ -179,6 +180,7 @@ class NetworkModel:
     def populate_facilities(self):
         """ create a database connection to a SQLite database """
         conn = None
+        print("getting facilities geographical coordinates from peeringdb...")
         try:
             conn = sqlite3.connect(self.dbf)
             cur = conn.cursor()
@@ -189,15 +191,23 @@ class NetworkModel:
 
             for fac in facilities:
                 self.facilityDict[fac[0]] = [float(fac[1]), float(fac[2]), fac[3]]
+            print("facilities found:")
+            print(len(self.facilityDict))
 
+            print("building list of facilities per AS using peeringdb database...")
+            cur.execute("SELECT DISTINCT local_asn from peeringdb_network_facility;")
+            c = cur.fetchall()
+            print("number of AS found within peeringdb facilities:")
+            print(len(c))
             cur.execute("SELECT local_asn, fac_id from peeringdb_network_facility;")
             asn = cur.fetchall()
-
             for entry in asn:
                 if entry[1] in self.asnDict.keys():
                     self.asnDict[entry[1]].append(entry[0])
                 else:
                     self.asnDict[entry[1]] = [entry[0]]
+            print("number of facilities found within peeringdb with at least one AS:")
+            print(len(self.asnDict))
 
         except Error as e:
             print("error")
@@ -208,12 +218,15 @@ class NetworkModel:
 
     def build_topology_full(self):
         wrFilename3 = self.lf
-        # preparing topology
+        # preparing detectable topology
         # intermediate dataset detectableLinks contains only links that can be recreated in facilities present in asnDict
         for link in self.linksList:
             l = list(link)
             key = (int(l[0]), int(l[1]))
+            #links are bidirectional, so inverted src, dest count as same key
             inv_key = (int(l[1]), int(l[0]))
+
+            #searching for facilities containing both src, dest AS
             for fac in self.asnDict:
                 if l[0] in self.asnDict[fac] and l[1] in self.asnDict[fac]:
                     if key not in self.detectableLinks.keys() and inv_key not in self.detectableLinks.keys():
@@ -226,7 +239,9 @@ class NetworkModel:
                         if fac not in self.detectableLinks[inv_key]:
                             self.detectableLinks[inv_key].append(fac)
         # saving detectableLinks for faster access in later runs
-        print("saving intermediate dataset for faster access")
+        print("number of links that can be reproduced inside peeringdb facilities")
+        print(len(self.detectableLinks))
+        print("saving detectable topology in " + str(wrFilename3))
         with open(wrFilename3, 'w', encoding="utf-8") as wrF:
             for entry in self.detectableLinks:
                 string = str(entry)
@@ -238,43 +253,51 @@ class NetworkModel:
             wrF.close()
 
     def build_topology_quick(self):
-        #print(len(self.linksList))
         self.detectableLinks = read_rebuilt_links(self.lf)
+        print("number of links read:")
+        print(len(self.detectableLinks))
 
     def initialize(self, full_init):
+        print("initializing topology...")
         #dictionaries initialization
         #facilityDict and asnDict
         self.populate_facilities()
 
         #serviceDict
+        print("collecting customer service data...")
         self.serviceDict = parse_html(self.cf)
 
         #list of links and detectableLinks
+        print("reading link list from " + str(self.rf))
         for l in read_full_links(self.rf):
             self.linksList.append(l)
+        print("number of links in full topology:")
+        print(len(self.linksList))
+
+        #detectableLinks
         if full_init:
             #build topology from full dataset
+            print("generating detectable topology from scratch...")
             self.build_topology_full()
+
         elif exists(self.lf):
             #use preprocessed data from file
+            print("reading detectable links from file")
             self.build_topology_quick()
         else:
             print("ERROR, TOPOLOGY FILE NOT FOUND")
 
     # prints an evaluation of how much population, internet structure would be affected by a loss of a number of AS
-    def get_service_damage(self, stat_obj, result, logging=False):
+    def get_service_damage(self, result, logging=True):
 
         # measure the impact of the event on the service
         # rebuilding the topology (for each link remaining we search for a faculty that houses both AS)
-
         # AS are not unique and can appear multiple times if they appear in different countries
         entries = []
         for e in self.serviceDict.keys():
             if self.serviceDict[e][0] in result.dead_AS:
                 entries.append(self.serviceDict[e])
-        #print("entries")
         # for each country code show damage
-        #print(len(entries))
         countries = {}
         # collecting entries for each cc
         for entry in entries:
@@ -299,47 +322,28 @@ class NetworkModel:
                     "country code: " + str(c) +
                     " service lost for " + str(local_pop) + " users, " + str(local_percent) +
                     "% of national coverage, totaling " + str(local_internet) + "% of global internet infrastructure")
-        if logging:
-            print("total damage: " + str(total_pop) + " users lost service, for " + str(
-                total_internet) + "% of the total internet")
 
-        stat_obj.user_damage = total_pop
-        stat_obj.internet_damage = total_internet
+        result.users_damage = total_pop
+        result.internet_damage = total_internet
+        return result
 
-    def process_impact_targets_only(self, targets, logging=False):
-        stats = Stats()
-        starting_links = len(self.linksList)
-        if logging:
-            print("starting links: " + str(starting_links) + "\n")
-
-        result = self.update_topology(targets)
-        self.get_service_damage(stats, result, logging)
-        if logging:
-            remaining = len(self.linksList)
-            print("lost links: " + str(len(result.dead_links)) + "\n")
-            print("remaining links: " + str(remaining) + "\n")
-
+    def get_stats(self):
+        stats = graphAnalisys.get_stats(self.linksList, self.ns)
         return stats
 
-    def process_impact(self, lat, lon, radius, logging=False, collecting_stats=False, logfile=LOGFILE, ns=100):
-        stats = Stats()
-        targets = self.get_targets(lat, lon, radius)
+    #returns object containing dead links and dead AS
+    def process_impact(self, targets, logging=False):
         starting_links = len(self.linksList)
         if(logging):
             print("starting links: " + str(starting_links) + "\n")
 
-        result = self.update_topology(targets)
-        if collecting_stats:
-            stats = graphAnalisys.get_stats(self.linksList, ns)
+        result = self.update_topology(targets, logging)
+
         #damage% is always needed for cumulative measurement
-        self.get_service_damage(stats, result)
         if(logging):
             remaining = len(self.linksList)
             print("lost links: " + str(len(result.dead_links)) + "\n")
             print("remaining links: " + str(remaining) + "\n")
 
-            print("plotting degree distribution after impact")
-            test_degree_distribution(self.linksList, logfile + "-post.png")
-
-        return stats
+        return result
 

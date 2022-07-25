@@ -19,6 +19,8 @@ if __name__ == '__main__':
             if t not in targets:
                 targets.append(t)
     print("processing full event")
-    ret = net.process_impact_targets_only(targets, True)
+    ret = net.process_impact(targets, True)
+    net.print_dictionaries("poffo")
     #elaborating statistics
+
     #graphAnalisys.plot_stat_variation(statList, "prova")

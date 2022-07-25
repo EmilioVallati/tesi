@@ -7,11 +7,11 @@ import random
 from utility import Stats
 
 
-#takes dictionary of links and facilities
-def plot_topology(linksList, file):
+#takes dictionary of links and facilities, plots topology graph, useless for huge graphs
+def plot_topology(linkslist, file):
     #plt.figure(figsize=(50, 50), dpi=300)
     G = nx.Graph()
-    for e in linksList:
+    for e in linkslist:
         G.add_edge(e[0], e[1])
     pos = nx.layout.kamada_kawai_layout(G)
 
@@ -40,66 +40,28 @@ def plot_topology(linksList, file):
     plt.savefig(file, dpi=2000)
 
 
-#dictionary with links as keys, plots degree population graph
-def test_degree(graph, file):
-    G = nx.Graph()
-    for e in graph:
-        G.add_edge(e[0], e[1])
-
-    Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
-    G0 = G.subgraph(Gcc[0])
-
-    n = G0.number_of_nodes()
-    print("plotting node degree distribution\n")
-
-    degree_sequence = sorted((d for n, d in G.degree()), reverse=True)
-    dmax = max(degree_sequence)
-
-    fig = plt.figure("Degree", figsize=(8, 8))
-    # Create a gridspec for adding subplots of different sizes
-    axgrid = fig.add_gridspec(5, 4)
-
-    ax1 = fig.add_subplot(axgrid[0:3, :])
-    ax1.plot(degree_sequence, "b-", marker="o")
-    ax1.set_title("Degree Rank Plot")
-    ax1.set_ylabel("Degree")
-    ax1.set_xlabel("Rank")
-    ax1.set_yscale("log")
-    ax1.set_xscale("log")
-
-    ax2 = fig.add_subplot(axgrid[3:, :2])
-    ax2.bar(*np.unique(degree_sequence, return_counts=True))
-    ax2.set_title("Degree histogram")
-    ax2.set_xlabel("Degree")
-    ax2.set_ylabel("# of Nodes")
-    ax2.set_yscale("log")
-    ax2.set_xscale("log")
-
-    fig.tight_layout()
-    plt.savefig(file)
-    plt.close()
-
-#dictionary with links as keys, plots degree distribution for the giant component
+# dictionary with links as keys
+# plots degree distribution graph
 def test_degree_distribution(graph, file):
-    G = nx.Graph(node_type=int)
+    g = nx.Graph(node_type=int)
     for e in graph:
-        G.add_edge(e[0], e[1])
+        g.add_edge(e[0], e[1])
 
     #find giant component
-    Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
-    G0 = G.subgraph(Gcc[0])
+    gcc = sorted(nx.connected_components(g), key=len, reverse=True)
+    g0 = g.subgraph(gcc[0])
 
-    degree_sequence = sorted((d for n, d in G.degree()), reverse=True)
-    dmax = max(degree_sequence)
+    degree_sequence = sorted((d for n, d in g.degree()), reverse=True)
+    d_max = max(degree_sequence)
 
-    degrees = np.arange(1, dmax)
+    degrees = np.arange(1, d_max)
     counter = []
     for i in degrees:
         counter.append(degree_sequence.count(i))
-    counternp = np.array(counter)
+    counter_np = np.array(counter)
 
 
-    cdf = counternp.cumsum() / counternp.sum()
+    cdf = counter_np.cumsum() / counter_np.sum()
     ccdf = 1 - cdf
 
     fig = plt.figure("Degree", figsize=(8, 8))
@@ -121,50 +83,55 @@ def test_degree_distribution(graph, file):
     plt.savefig(file)
     plt.close()
 
-def get_stats(graph, ns=100):
+#single event stats
+def get_stats(graph, ns):
     stat = Stats()
     stat.nsample = ns
 
-    G = nx.Graph(node_type=int)
+    g = nx.Graph(node_type=int)
     for e in graph:
-        G.add_edge(e[0], e[1])
+        g.add_edge(e[0], e[1])
 
     #find giant component
-    Gcc = sorted(nx.connected_components(G), key=len, reverse=True)
-    G0 = G.subgraph(Gcc[0])
+    gcc = sorted(nx.connected_components(g), key=len, reverse=True)
+    g0 = g.subgraph(gcc[0])
 
-    n = G.number_of_nodes()
-    stat.size_of_giant_component = nx.number_of_nodes(G0)
-    stat.disjoint_components = nx.number_connected_components(G)
+    #collecting node numbers
+    stat.nodes_number = g.number_of_nodes()
+    stat.size_of_giant_component = nx.number_of_nodes(g0)
+    stat.disjoint_components = nx.number_connected_components(g)
 
-    sampled_conn = random.sample(G0.nodes, ns)
-    sampled_src = random.sample(G0.nodes, ns)
-    sampled_dest = random.sample(G0.nodes, ns)
-    avg = 0
+    #sampling nodes for aspl approx.
+    sampled_src = random.sample(g0.nodes, int(ns))
+    sampled_dest = random.sample(g0.nodes, int(ns))
+
     count = 0
     sum = 0
     for s in sampled_src:
         for d in sampled_dest:
             if s != d:
-                dist = nx.shortest_path_length(G0, s, d)
+                dist = nx.shortest_path_length(g0, s, d)
                 count += 1
                 sum += dist
     avg = sum/count
     stat.aspl = avg
     return stat
 
+#plots variation of values, requires multiple events and list of stats
 def plot_stat_variation(statList, filename):
 
     x = np.array(range(0, len(statList)))
     y_aspl = []
     y_sogc = []
     y_discomp = []
-    y_damage = []
+    y_int_damage = []
+    y_pop_damage = []
     for i in statList:
         y_aspl.append(i.aspl)
         y_sogc.append(i.size_of_giant_component)
         y_discomp.append(i.disjoint_components)
-        y_damage.append(i.internet_damage)
+        y_int_damage.append(i.internet_damage)
+        y_pop_damage.append(i.user_damage)
 
     #aspl variation plot
 
@@ -188,8 +155,13 @@ def plot_stat_variation(statList, filename):
     plt.close()
 
     #total internet damage progression
-    y = np.array(y_damage)
+    y = np.array(y_int_damage)
     plt.plot(x, y)
-    plt.savefig("damage_" + str(filename))
+    plt.savefig("damage_internet_" + str(filename))
     plt.close()
 
+    #total population service lost
+    y = np.array(y_pop_damage)
+    plt.plot(x, y)
+    plt.savefig("damage_population_" + str(filename))
+    plt.close()

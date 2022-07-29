@@ -26,6 +26,7 @@ class NetworkModel:
         self.dbf = conf_file.DBFILE
         self.logf = conf_file.LOGFILE
         self.ns = conf_file.NUMSAMPLES
+        self.mode = conf_file.MODE
 
         # key: fac_id (int) {lat (float), long (float), name (str)}
         self.facilityDict = {}
@@ -37,10 +38,11 @@ class NetworkModel:
         self.linksList = []
 
         # as customer service dataset
-        # key: entry_id (AS, country code, #users, % of population serviced, % of internet served) (int, str, int, float, float)
+        # key: entry_id : (AS, country code, #users, % of population serviced, % of internet served) (int, str, int, float, float)
         self.serviceDict = {}
 
-        #separated group of links that can be reproduced in facilities
+        # group of links that can be reproduced in facilities and where they are reproducible
+        # key: (src_AS, dest_as) : [fac_id1, fac_id2 ...]
         self.detectableLinks = {}
 
 
@@ -48,19 +50,19 @@ class NetworkModel:
     def get_targets(self, lat, lon, size):
         targets = []
         for entry in self.facilityDict:
-            if get_distance(lat, lon, self.facilityDict[entry][0], self.facilityDict[entry][1]) < size:
+            if get_distance(lat, lon, self.facilityDict[entry][0], self.facilityDict[entry][1]) <= size:
                 targets.append(entry)
         return targets
 
     # returns list of links deleted from topology
     def remove_facility(self, fac_id, logging=False):
+
         count = 0
         ret = Result()
         if fac_id in self.asnDict:
             del self.asnDict[fac_id]
+        # searching for the detected links that are reproduced in the removed facility
         for link in self.detectableLinks:
-            if logging:
-                print("looking for " + str(fac_id) + " into " + str(self.detectableLinks[link]))
             if fac_id in self.detectableLinks[link]:
                 count += 1
                 if logging:
@@ -69,45 +71,83 @@ class NetworkModel:
                 # no more facility for a link means it's dead
                 if len(self.detectableLinks[link]) == 0:
                     ret.dead_links.append(link)
+
+        # removing dead links from detectable topology
+        new_dead_links = []
+        new_dead_AS = []
+
         for l in ret.dead_links:
-            # removing dead links from detectable list and topology
+            #removing from detected topology
             del self.detectableLinks[l]
-            # searching if single AS are still available in facilities
+            # removing from full topology if present
+            if l in self.linksList:
+                self.linksList.remove(l)
+
+            # checking if single AS are still available in facilities or in full topology
             ll = list(l)
+            # facilities
             f1 = 0
             f2 = 0
+            # full topology
             l1 = 0
             l2 = 0
+            #looking for other facilities containing src_AS and dest_AS
             for e in self.asnDict:
                 if l[0] in self.asnDict[e]:
                     f1 += 1
                 if l[1] in self.asnDict[e]:
                     f2 += 1
 
-            # removing from topology
-            if l in self.linksList:
-                self.linksList.remove(l)
-
-            # looking for links in topology containing the AS
-            for entry in self.linksList:
-                ee = list(entry)
-                if ll[0] in ee:
-                    l1 += 1
-                if ll[1] in ee:
-                    l2 += 1
-
+            # if no facilities are found, we must look into the full topology.
             if logging:
                 print("AS " + str(l[0]) + " found in " + str(f1) + " facilities")
-                print("AS " + str(l[0]) + " found in " + str(l1) + " links")
                 print("AS " + str(l[1]) + " found in " + str(f2) + " facilities")
-                print("AS " + str(l[1]) + " found in " + str(l2) + " links")
 
-            if f1 == 0 and l1 == 0:
-                ret.dead_AS.append(l[0])
-                print("AS " + str(l[0]) + " no longer connected!")
-            if f2 == 0 and l2 == 0:
-                ret.dead_AS.append(l[1])
-                print("AS " + str(l[1]) + " no longer connected!")
+            # if specified, we can assume full topology links that feature an AS not present in any facility
+            # will be removed as well
+            if self.mode == "volatile":
+                if f1 == 0:
+                    if ll[0] not in new_dead_AS:
+                        print("AS " + str(l[0]) + " no longer connected!")
+                        new_dead_AS.append(ll[0])
+                    for entry in self.linksList:
+                        ee = list(entry)
+                        if ll[0] in ee:
+                            new_dead_links.append(entry)
+                            self.linksList.remove(entry)
+                if f2 == 0:
+                    if ll[1] not in new_dead_AS:
+                        print("AS " + str(l[1]) + " no longer connected!")
+                        new_dead_AS.append(ll[1])
+                    for entry in self.linksList:
+                        ee = list(entry)
+                        if ll[1] in ee:
+                            new_dead_links.append(entry)
+                            self.linksList.remove(entry)
+            # by default we are assuming that un-detectable links are indestructible, therefore if the full
+            # topology contains at least one link with the AS, we cannot discard it
+            # looking for links in topology containing the AS
+            else:
+                for entry in self.linksList:
+                    ee = list(entry)
+                    if ll[0] in ee:
+                        l1 += 1
+                    if ll[1] in ee:
+                        l2 += 1
+
+
+                if logging:
+                    print("AS " + str(l[0]) + " found in " + str(f1) + " facilities")
+                    print("AS " + str(l[0]) + " found in " + str(l1) + " links")
+                    print("AS " + str(l[1]) + " found in " + str(f2) + " facilities")
+                    print("AS " + str(l[1]) + " found in " + str(l2) + " links")
+
+                if f1 == 0 and l1 == 0:
+                    ret.dead_AS.append(l[0])
+                    print("AS " + str(l[0]) + " no longer connected!")
+                if f2 == 0 and l2 == 0:
+                    ret.dead_AS.append(l[1])
+                    print("AS " + str(l[1]) + " no longer connected!")
 
         # if count != 0:
         # print("facility " + str(fac_id) + " removed from " + str(count) + " links\n")
@@ -115,12 +155,19 @@ class NetworkModel:
         # print("no links lost\n")
         # if len(deleted_links) != 0:
         # print(str(len(deleted_links)) + " links lost")
+        if len(new_dead_links) != 0:
+            for new in new_dead_links:
+                ret.dead_links.append(new)
+        if len(new_dead_AS) != 0:
+            for new in new_dead_AS:
+                if new not in ret.dead_AS:
+                    ret.dead_AS.append(new)
         return ret
 
     #removes target facilities and returns list of dead links and AS
     def update_topology(self, targets, logging=False):
         # removing facility
-        ret1 = Result()
+        ret_all = Result()
         long = False
         cnt = 0
         if len(targets) >= 100:
@@ -137,11 +184,12 @@ class NetworkModel:
             ret = self.remove_facility(t)
             # collect dead links for statistics
             for l in ret.dead_links:
-                ret1.dead_links.append(l)
+                ret_all.dead_links.append(l)
             for a in ret.dead_AS:
-                ret1.dead_AS.append(a)
+                ret_all.dead_AS.append(a)
+
         #measuring damage
-        ret1 = self.get_service_damage(ret1)
+        ret1 = self.get_service_damage(ret_all)
         if logging:
             print("total damage: " + str(ret1.users_damage) + " users lost service, for " + str(
                 ret1.internet_damage) + "% of the total internet")
@@ -290,20 +338,21 @@ class NetworkModel:
     # prints an evaluation of how much population, internet structure would be affected by a loss of a number of AS
     def get_service_damage(self, result, logging=True):
 
+        ret = Result()
         # measure the impact of the event on the service
-        # rebuilding the topology (for each link remaining we search for a faculty that houses both AS)
         # AS are not unique and can appear multiple times if they appear in different countries
         entries = []
-        for e in self.serviceDict.keys():
-            if self.serviceDict[e][0] in result.dead_AS:
-                entries.append(self.serviceDict[e])
+        for k in self.serviceDict.keys():
+            if self.serviceDict[k][0] in result.dead_AS:
+                entries.append(self.serviceDict[k])
         # for each country code show damage
         countries = {}
         # collecting entries for each cc
-        for entry in entries:
-            if entry[1] not in countries.keys():
-                countries[entry[1]] = []
-            countries[entry[1]].append(entry)
+        for e in entries:
+            if e[1] not in countries.keys():
+                countries[e[1]] = [e]
+            else:
+                countries[e[1]].append(e)
         total_pop = 0
         total_internet = 0
         for c in countries:
@@ -323,13 +372,16 @@ class NetworkModel:
                     " service lost for " + str(local_pop) + " users, " + str(local_percent) +
                     "% of national coverage, totaling " + str(local_internet) + "% of global internet infrastructure")
 
-        result.users_damage = total_pop
-        result.internet_damage = total_internet
-        return result
+        ret.users_damage = total_pop
+        ret.internet_damage = total_internet
+        return ret
 
-    def get_stats(self):
-        stats = graphAnalisys.get_stats(self.linksList, self.ns)
-        return stats
+    #selecting fixed sample
+    def get_sample(self):
+        return graphAnalisys.get_sample(self.linksList, self.ns)
+
+    def get_stats(self, sample):
+        return graphAnalisys.get_stats(self.linksList, sample)
 
     #returns object containing dead links and dead AS
     def process_impact(self, targets, logging=False):

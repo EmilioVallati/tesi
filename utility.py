@@ -57,6 +57,12 @@ class Config:
             else:
                 print("undefined sample frequency")
                 raise Exception
+            #conservative or volatile nodes mode
+            if 'MODE' in config['nuclear_warfare']:
+                self.MODE = config['nuclear_warfare']['MODE']
+            else:
+                print("undefined mode")
+                raise Exception
 
 
 #aspl sampled over nsample nodes
@@ -75,6 +81,7 @@ class Stats:
         self.nsample = 0
         self.user_damage = 0
         self.internet_damage = 0
+        self.sample_nodes = []
 
 def get_distance(lat1, lon1, lat2, lon2):
     src = (lat1, lon1)

@@ -43,11 +43,14 @@ if __name__ == '__main__':
     #process
     total_internet_damage = 0
     total_population_damage = 0
+    #selecting samples before processing events
+    samples = net.get_sample()
+
     for i in sc:
         print("processing event: lat: " + str(i.latitude) + ", lon: " + str(i.longitude) + ", radius: " + str(i.radius))
         t = net.get_targets(i.latitude, i.longitude, i.radius)
         if cnt == 0:
-            s = net.get_stats()
+            s = net.get_stats(samples)
             s.internet_damage = float(total_internet_damage)
             s.user_damage = int(total_population_damage)
             graphAnalisys.test_degree_distribution(net.linksList, "start")
@@ -60,7 +63,7 @@ if __name__ == '__main__':
             ret = net.process_impact(t, True)
             total_internet_damage += float(ret.internet_damage)
             total_population_damage += float(ret.users_damage)
-            s = net.get_stats()
+            s = net.get_stats(samples)
             s.internet_damage = float(total_internet_damage)
             s.user_damage = int(total_population_damage)
             statList.append(s)
@@ -72,7 +75,7 @@ if __name__ == '__main__':
             total_population_damage += int(ret.users_damage)
             #sampling for stats
             if cnt%int(conf.NUMEVENTS) == 0:
-                s = net.get_stats()
+                s = net.get_stats(samples)
                 s.internet_damage = float(total_internet_damage)
                 s.user_damage = int(total_population_damage)
                 statList.append(s)
@@ -80,6 +83,9 @@ if __name__ == '__main__':
                 percent = int((cnt/len(sc)*100))
                 print("progress: " + str(percent) + "%")
             cnt += 1
-
+    print("total internet % damage: ")
+    print(total_internet_damage)
+    print("total users disconnectet: ")
+    print(total_population_damage)
     #elaborating statistics
     graphAnalisys.plot_stat_variation(statList, "prova")

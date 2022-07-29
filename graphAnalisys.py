@@ -83,10 +83,25 @@ def test_degree_distribution(graph, file):
     plt.savefig(file)
     plt.close()
 
+#selecting fixed samples for aspl measurement
+def get_sample(graph, ns):
+    g = nx.Graph(node_type=int)
+    for e in graph:
+        g.add_edge(e[0], e[1])
+
+    #find giant component
+    gcc = sorted(nx.connected_components(g), key=len, reverse=True)
+    g0 = g.subgraph(gcc[0])
+
+    #select ns random link samples (requires 2*ns the nodes)
+    samples = random.sample(g0.nodes, int(ns)*2)
+    return samples
+
+
+
 #single event stats
-def get_stats(graph, ns):
+def get_stats(graph, sample):
     stat = Stats()
-    stat.nsample = ns
 
     g = nx.Graph(node_type=int)
     for e in graph:
@@ -102,19 +117,28 @@ def get_stats(graph, ns):
     stat.disjoint_components = nx.number_connected_components(g)
 
     #sampling nodes for aspl approx.
-    sampled_src = random.sample(g0.nodes, int(ns))
-    sampled_dest = random.sample(g0.nodes, int(ns))
+    l = int(len(sample)//2)
+    sampled_src = sample[:l]
+    sampled_dest = sample[l:]
 
     count = 0
     sum = 0
+    flag = False
     for s in sampled_src:
         for d in sampled_dest:
             if s != d:
-                dist = nx.shortest_path_length(g0, s, d)
+                try:
+                    dist = nx.shortest_path_length(g0, s, d)
+                except nx.NodeNotFound:
+                    dist = 0
+                    flag = True
                 count += 1
                 sum += dist
     avg = sum/count
-    stat.aspl = avg
+    if flag:
+        stat.aspl = 0
+    else:
+        stat.aspl = avg
     return stat
 
 #plots variation of values, requires multiple events and list of stats

@@ -2,7 +2,7 @@ import re
 HTML_FILE = "Dataset/customers-per-as-measurements.html"
 
 
-def parse_html(file):
+def parse_service(file):
     wrFile = "Dataset/population-data.txt"
     lines = []
     serviceDict = {}
@@ -34,4 +34,4 @@ def parse_html(file):
     return serviceDict
 
 if __name__ == '__main__':
-    print(parse_html(HTML_FILE))
+    print(parse_service(HTML_FILE))

@@ -4,31 +4,43 @@ import networkx as nx
 import numpy as np
 from networkx.algorithms import approximation
 import random
-from utility import Stats
 
+class Stats:
+    def __init__(self):
+        self.aspl = 0
+        self.size_of_giant_component = 0
+        self.disjoint_components = 0
+        self.nodes_number = 0
+        self.nsample = 0
+        self.user_damage = 0
+        self.internet_damage = 0
+        self.sample_nodes = []
+
+def make_graph(linkslist):
+    g = nx.Graph()
+    for e in linkslist:
+        g.add_edge(e[0], e[1])
+    return g
 
 #takes dictionary of links and facilities, plots topology graph, useless for huge graphs
-def plot_topology(linkslist, file):
+def plot_topology(graph, file):
     #plt.figure(figsize=(50, 50), dpi=300)
-    G = nx.Graph()
-    for e in linkslist:
-        G.add_edge(e[0], e[1])
-    pos = nx.layout.kamada_kawai_layout(G)
+    pos = nx.layout.kamada_kawai_layout(graph)
 
     #node_sizes = [3 + 10 * i for i in range(len(G))]
     node_size = 1
-    M = G.number_of_edges()
+    M = graph.number_of_edges()
     #edge_colors = range(2, M + 2)
     edge_colors = 2
     #edge_alphas = [(5 + i) / (M + 4) for i in range(M)]
     edge_alphas = 0.5
 
     #nodes = nx.draw_networkx_nodes(G, pos, node_size=node_sizes, node_color='blue')
-    nodes = nx.draw_networkx_nodes(G, pos, node_size=0.1, node_color='blue')
+    nodes = nx.draw_networkx_nodes(graph, pos, node_size=0.1, node_color='blue')
     #edges = nx.draw_networkx_edges(G, pos, node_size=node_sizes, arrowstyle='->',
     #                               arrowsize=10, edge_color=edge_colors,
     #                               edge_cmap=plt.cm.Blues, width=2)
-    edges = nx.draw_networkx_edges(G, pos, arrowstyle='->', arrowsize=1, width=0.05)
+    edges = nx.draw_networkx_edges(graph, pos, arrowstyle='->', arrowsize=1, width=0.05)
     # set alpha value for each edge
     #for i in range(M):
     #    edges[i].set_alpha(edge_alphas[i])
@@ -43,15 +55,12 @@ def plot_topology(linkslist, file):
 # dictionary with links as keys
 # plots degree distribution graph
 def test_degree_distribution(graph, file):
-    g = nx.Graph(node_type=int)
-    for e in graph:
-        g.add_edge(e[0], e[1])
 
     #find giant component
-    gcc = sorted(nx.connected_components(g), key=len, reverse=True)
-    g0 = g.subgraph(gcc[0])
+    gcc = sorted(nx.connected_components(graph), key=len, reverse=True)
+    g0 = graph.subgraph(gcc[0])
 
-    degree_sequence = sorted((d for n, d in g.degree()), reverse=True)
+    degree_sequence = sorted((d for n, d in graph.degree()), reverse=True)
     d_max = max(degree_sequence)
 
     degrees = np.arange(1, d_max)
@@ -84,14 +93,11 @@ def test_degree_distribution(graph, file):
     plt.close()
 
 #selecting fixed samples for aspl measurement
-def get_sample(graph, ns):
-    g = nx.Graph(node_type=int)
-    for e in graph:
-        g.add_edge(e[0], e[1])
+def get_sample_from_giant_component(graph, ns):
 
     #find giant component
-    gcc = sorted(nx.connected_components(g), key=len, reverse=True)
-    g0 = g.subgraph(gcc[0])
+    gcc = sorted(nx.connected_components(graph), key=len, reverse=True)
+    g0 = graph.subgraph(gcc[0])
 
     #select ns random link samples (requires 2*ns the nodes)
     samples = random.sample(g0.nodes, int(ns)*2)
@@ -100,12 +106,8 @@ def get_sample(graph, ns):
 
 
 #single event stats
-def get_stats(graph, sample):
+def get_stats(g, sample):
     stat = Stats()
-
-    g = nx.Graph(node_type=int)
-    for e in graph:
-        g.add_edge(e[0], e[1])
 
     #find giant component
     gcc = sorted(nx.connected_components(g), key=len, reverse=True)

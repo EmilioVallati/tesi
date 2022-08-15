@@ -46,20 +46,44 @@ class Config:
 
             # number of samples for average measurements
             if 'NUMSAMPLES' in config['nuclear_warfare']:
-                self.NUMSAMPLES = config['nuclear_warfare']['NUMSAMPLES']
+                m = config['nuclear_warfare']['NUMSAMPLES']
+                if int(m) > 0:
+                    self.NUMSAMPLES = m
+                else:
+                    raise Exception
             else:
                 print("undefined sample number")
                 raise Exception
 
             # number of events between measurements
             if 'NUMEVENTS' in config['nuclear_warfare']:
-                self.NUMEVENTS = config['nuclear_warfare']['NUMEVENTS']
+                m = config['nuclear_warfare']['NUMEVENTS']
+                if int(m) > 0:
+                    self.NUMEVENTS = m
+                else:
+                    raise Exception
             else:
                 print("undefined sample frequency")
                 raise Exception
             #conservative or volatile nodes mode
             if 'MODE' in config['nuclear_warfare']:
-                self.MODE = config['nuclear_warfare']['MODE']
+                m = config['nuclear_warfare']['MODE']
+                if m == 'volatile' or m == 'stable':
+                    self.MODE = m
+                else:
+                    print("Only 'volatile' or 'stable' values allowed for MODE")
+                    raise Exception
+            else:
+                print("undefined mode")
+                raise Exception
+            #full init or load previous topology
+            if 'FULL_INIT' in config['nuclear_warfare']:
+                m = config['nuclear_warfare']['FULL_INIT']
+                if m == 'True' or m == 'False':
+                    self.FULL_INIT = m
+                else:
+                    print("Only 'True' or 'False' values allowed for FULL_INIT")
+                    raise Exception
             else:
                 print("undefined mode")
                 raise Exception
@@ -71,17 +95,6 @@ class Config:
 #average node connectivity
 #number of user that lost connection
 #%of the internet users losing connectivity
-
-class Stats:
-    def __init__(self):
-        self.aspl = 0
-        self.size_of_giant_component = 0
-        self.disjoint_components = 0
-        self.nodes_number = 0
-        self.nsample = 0
-        self.user_damage = 0
-        self.internet_damage = 0
-        self.sample_nodes = []
 
 def get_distance(lat1, lon1, lat2, lon2):
     src = (lat1, lon1)

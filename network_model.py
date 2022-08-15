@@ -1,32 +1,39 @@
-from __future__ import division
 
 from os.path import exists
 import sqlite3
 from sqlite3 import Error
 
 import graphAnalisys
+import networkx as nx
 from utility import get_distance, read_rebuilt_links, read_full_links, Config
 
-from population_dataset_extractor import parse_html
+from population_dataset_extractor import parse_service
 
-# collects failed lins and AS after a facility is removed
+# collects failed links and AS after a facility is removed
 class Result:
     def __init__(self):
         self.dead_links = []
         self.dead_AS = []
-        self.users_damage = 0
-        self.internet_damage = 0
+
+class DamageReport:
+    def __init__(self, country, ud=0, lp=0, tp=0):
+        self.cc = country
+        self.users_damage = ud
+        self.local_percent = lp
+        self.total_percent = tp
 
 class NetworkModel:
-    def __init__(self, conf_file):
+    def __init__(self, cf, rf, lf, dbf, logf, mode, full_init):
         #file names init
-        self.cf = conf_file.CUSTOMER_FILE
-        self.rf = conf_file.RELFILE
-        self.lf = conf_file.LINKFILE
-        self.dbf = conf_file.DBFILE
-        self.logf = conf_file.LOGFILE
-        self.ns = conf_file.NUMSAMPLES
-        self.mode = conf_file.MODE
+        self.cf = cf
+        self.rf = rf
+        self.lf = lf
+        self.dbf = dbf
+        self.logf = logf
+        self.mode = mode
+        self.full_init = full_init
+
+        self.topology_graph = nx.Graph()
 
         # key: fac_id (int) {lat (float), long (float), name (str)}
         self.facilityDict = {}
@@ -54,11 +61,17 @@ class NetworkModel:
                 targets.append(entry)
         return targets
 
+    def get_samples(self, num_samples):
+        return graphAnalisys.get_sample_from_giant_component(self.topology_graph, num_samples)
+
     # returns list of links deleted from topology
     def remove_facility(self, fac_id, logging=False):
 
         count = 0
         ret = Result()
+        fac = self.facilityDict[fac_id]
+        del self.facilityDict[fac_id]
+
         if fac_id in self.asnDict:
             del self.asnDict[fac_id]
         # searching for the detected links that are reproduced in the removed facility
@@ -127,7 +140,7 @@ class NetworkModel:
             # by default we are assuming that un-detectable links are indestructible, therefore if the full
             # topology contains at least one link with the AS, we cannot discard it
             # looking for links in topology containing the AS
-            else:
+            elif self.mode == 'stable':
                 for entry in self.linksList:
                     ee = list(entry)
                     if ll[0] in ee:
@@ -188,13 +201,10 @@ class NetworkModel:
             for a in ret.dead_AS:
                 ret_all.dead_AS.append(a)
 
-        #measuring damage
-        ret1 = self.get_service_damage(ret_all)
-        if logging:
-            print("total damage: " + str(ret1.users_damage) + " users lost service, for " + str(
-                ret1.internet_damage) + "% of the total internet")
+        #updating graph and collecting statistics
+        graphAnalisys.update_graph(self.topology_graph, ret_all.dead_links)
 
-        return ret1
+        return ret_all
 
 
     def print_dictionaries(self, filename):
@@ -305,7 +315,7 @@ class NetworkModel:
         print("number of links read:")
         print(len(self.detectableLinks))
 
-    def initialize(self, full_init):
+    def initialize(self):
         print("initializing topology...")
         #dictionaries initialization
         #facilityDict and asnDict
@@ -313,37 +323,43 @@ class NetworkModel:
 
         #serviceDict
         print("collecting customer service data...")
-        self.serviceDict = parse_html(self.cf)
+        self.serviceDict = parse_service(self.cf)
 
-        #list of links and detectableLinks
+        #list of links and graph initialization
         print("reading link list from " + str(self.rf))
         for l in read_full_links(self.rf):
             self.linksList.append(l)
+            self.topology_graph.add_edge(l[0], l[1])
+
         print("number of links in full topology:")
         print(len(self.linksList))
 
         #detectableLinks
-        if full_init:
+        if self.full_init:
             #build topology from full dataset
             print("generating detectable topology from scratch...")
             self.build_topology_full()
 
-        elif exists(self.lf):
-            #use preprocessed data from file
-            print("reading detectable links from file")
-            self.build_topology_quick()
         else:
-            print("ERROR, TOPOLOGY FILE NOT FOUND")
+            if exists(self.lf):
+                #use preprocessed data from file
+                print("reading detectable links from file")
+                self.build_topology_quick()
+            else:
+                print("ERROR, TOPOLOGY FILE NOT FOUND")
 
-    # prints an evaluation of how much population, internet structure would be affected by a loss of a number of AS
-    def get_service_damage(self, result, logging=True):
+        #creating the graph object
+        self.topology_graph = graphAnalisys.makeGraph(self.linksList)
 
-        ret = Result()
+    # returns a lost of reports with the damage for each country resulting from the loss of a list of AS
+    def get_service_damage(self, as_list, logging=True):
+
+        ret = []
         # measure the impact of the event on the service
         # AS are not unique and can appear multiple times if they appear in different countries
         entries = []
-        for k in self.serviceDict.keys():
-            if self.serviceDict[k][0] in result.dead_AS:
+        for k in self.serviceDict:
+            if self.serviceDict[k][0] in as_list:
                 entries.append(self.serviceDict[k])
         # for each country code show damage
         countries = {}
@@ -353,8 +369,8 @@ class NetworkModel:
                 countries[e[1]] = [e]
             else:
                 countries[e[1]].append(e)
-        total_pop = 0
-        total_internet = 0
+        #total_pop = 0
+        #total_internet = 0
         for c in countries:
             local_percent = 0
             local_pop = 0
@@ -363,25 +379,20 @@ class NetworkModel:
                 local_pop += c1[2]
                 local_percent += c1[3]
                 local_internet += c1[4]
-            total_pop += local_pop
-            total_internet += local_internet
+            #total_pop += local_pop
+            #total_internet += local_internet
 
+            r = DamageReport(str(c), local_pop, local_percent, local_internet)
+            ret.append(r)
             if logging:
                 print(
                     "country code: " + str(c) +
                     " service lost for " + str(local_pop) + " users, " + str(local_percent) +
                     "% of national coverage, totaling " + str(local_internet) + "% of global internet infrastructure")
 
-        ret.users_damage = total_pop
-        ret.internet_damage = total_internet
+        #ret.users_damage = total_pop
+        #ret.internet_damage = total_internet
         return ret
-
-    #selecting fixed sample
-    def get_sample(self):
-        return graphAnalisys.get_sample(self.linksList, self.ns)
-
-    def get_stats(self, sample):
-        return graphAnalisys.get_stats(self.linksList, sample)
 
     #returns object containing dead links and dead AS
     def process_impact(self, targets, logging=False):

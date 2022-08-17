@@ -2,12 +2,7 @@
 SCENARIO = "./Dataset/countervalue.csv"
 import pandas as pd
 import csv
-
-class Event:
-    def __init__(self):
-        self.latitude = 0
-        self.longitude = 0
-        self.radius = 0
+from topology_analyzer import Event
 
 def get_radius(yld, hob):
     #return value expressed in km
@@ -39,10 +34,10 @@ def get_scenario(file=SCENARIO):
         reader = csv.reader(f)
         next(reader)
         for row in reader:
-            e = Event()
-            e.latitude = float(row[0])
-            e.longitude = float(row[1])
-            e.radius = get_radius(int(row[4]), int(row[5]))
+            latitude = float(row[0])
+            longitude = float(row[1])
+            radius = get_radius(int(row[4]), int(row[5]))
+            e = Event(latitude, longitude, radius)
             eventList.append(e)
         f.close()
     return eventList

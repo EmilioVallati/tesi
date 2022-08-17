@@ -3,7 +3,6 @@ from os.path import exists
 from network_model import Result, DamageReport
 import graphAnalisys
 import network_model as nw
-from scenario import Event, get_radius, get_scenario
 from utility import Config
 import networkx as nx
 
@@ -11,8 +10,48 @@ class ScenarioReport:
     def __init__(self):
         self.damage_list = []
         self.stat_list = []
+        self.lost_facilities = []
+        self.lost_AS = []
+        self.lost_links = []
         self.global_user_loss = 0
         self.global_internet_loss = 0
+
+    def print_report(self):
+        print("damage_list")
+        print(self.damage_list)
+        print("stat_list")
+        print(self.stat_list)
+        print("lost facilities:")
+        print(self.lost_facilities)
+        print("lost links:")
+        print(self.lost_links)
+        print("lost AS:")
+        print(self.lost_AS)
+        print("global user lost")
+        print(self.global_user_loss)
+        print("global internet loss")
+        print(self.global_internet_loss)
+
+    def get_global_damage(self):
+        total_pop = 0
+        total_internet = 0
+        print(self.damage_list)
+        for r in self.damage_list:
+            total_pop += r.users_damage
+            total_internet += r.total_percent
+            print(
+                "country code: " + str(r.cc) +
+                " service lost for " + str(r.users_damage) + " users, " + str(r.local_percent) +
+                "% of national coverage, totaling " + str(r.total_percent) + "% of global internet infrastructure")
+
+        print("total damage: " + str(total_pop) + " users lost service, for " +
+              str(total_internet) + "% of the total internet")
+
+        # generating global report
+        self.global_user_loss = total_pop
+        self.global_internet_loss = total_internet
+
+
 
 class Event:
     def __init__(self, lat, lon, dist):
@@ -49,30 +88,12 @@ class Topology:
         # returns a DamageReport list
         return self.net.get_service_damage(res.dead_AS)
 
-    def get_global_damage(self, report_list, scenario_report):
-        total_pop = 0
-        total_internet = 0
-        for r in report_list:
-            total_pop += r.users_damage
-            total_internet += r.total_percent
-            print(
-                "country code: " + str(r.cc) +
-                " service lost for " + str(r.users_damage) + " users, " + str(r.local_percent) +
-                "% of national coverage, totaling " + str(r.total_percent) + "% of global internet infrastructure")
-
-        print("total damage: " + str(total_pop) + " users lost service, for " +
-              str(total_internet) + "% of the total internet")
-
-        #generating global report
-        scenario_report.global_user_loss = total_pop
-        scenario_report.global_internet_loss = total_internet
-
     # produces measurements after elaborating a list of consecutive events defined by geographical coordinates,
     # either consecutively or simultaneously
     def run_scenario(self, event_list, sequential=False):
         #generating report at the start
         report = ScenarioReport()
-        report.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples, "start"))
+        report.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples, "start_snapshot.txt"))
         cnt = 0
         targets = []
         for e in event_list:
@@ -92,16 +113,21 @@ class Topology:
             else:
                 print("processing event: lat: " + str(e.latitude) + ", lon: " + str(e.longitude) + ", radius: " + str(
                     e.radius))
-                report.damage_reports.append(self.process_targets(ev_tgt))
-                if cnt%self.rep_frequency == 0:
-                    s = "ev_" + str(cnt)
+                if len(ev_tgt) > 0:
+                    dmg = self.process_targets(ev_tgt)
+                    for d in dmg:
+                        report.damage_list.append(d)
+                if cnt%int(self.rep_frequency) == 0:
+                    s = ("ev_" + str(cnt) + "_snapshot")
                     report.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples, s))
 
         if not sequential:
             print("processing full event")
-            report.damage_reports = self.process_targets(targets)
+            if len(targets) > 0:
+                report.damage_list = self.process_targets(targets)
         #generate final global damage report
+        report.get_global_damage()
 
-        report.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples, "end"))
+        report.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples, "end_snapshot"))
         return report
 

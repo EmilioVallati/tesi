@@ -11,7 +11,7 @@ class Stats:
         self.size_of_giant_component = 0
         self.disjoint_components = 0
         self.nodes_number = 0
-        self.nsample = 0
+        self.n_sample = 0
         self.user_damage = 0
         self.internet_damage = 0
         self.sample_nodes = []
@@ -21,6 +21,10 @@ def make_graph(linkslist):
     for e in linkslist:
         g.add_edge(e[0], e[1])
     return g
+
+def update_graph(g, dead_links):
+    for l in dead_links:
+        g.remove_edge(l[0], l[1])
 
 #takes dictionary of links and facilities, plots topology graph, useless for huge graphs
 def plot_topology(graph, file):
@@ -50,7 +54,6 @@ def plot_topology(graph, file):
     #pc = mpl.collections.PatchCollection(edges)
     #plt.colorbar(pc)
     plt.savefig(file, dpi=2000)
-
 
 # dictionary with links as keys
 # plots degree distribution graph
@@ -106,7 +109,7 @@ def get_sample_from_giant_component(graph, ns):
 
 
 #single event stats
-def get_stats(g, sample):
+def get_stats(g, sample, filename=None):
     stat = Stats()
 
     #find giant component
@@ -120,6 +123,7 @@ def get_stats(g, sample):
 
     #sampling nodes for aspl approx.
     l = int(len(sample)//2)
+    stat.n_sample = l
     sampled_src = sample[:l]
     sampled_dest = sample[l:]
 
@@ -137,10 +141,23 @@ def get_stats(g, sample):
                 count += 1
                 sum += dist
     avg = sum/count
-    if flag:
+    if flag is True:
         stat.aspl = 0
     else:
         stat.aspl = avg
+
+    if filename is not None:
+        with open(filename, 'w', encoding="utf-8") as wrF:
+            string = ("number of nodes: " + str(stat.nodes_number) + "\n")
+            string += ("size of giant component: " + str(stat.size_of_giant_component) + "\n")
+            string += ("number of disjoint components: " + str(stat.disjoint_components) + "\n")
+            string += ("number of samples: " + str(stat.n_sample) + "\n")
+            if flag is True:
+                string += ("aspl couldn't be measured, as one of the sample nodes has been removed")
+            else:
+                string += ("sampled aspl: " + str(stat.aspl) + "\n")
+            wrF.write(string)
+            wrF.close()
     return stat
 
 #plots variation of values, requires multiple events and list of stats

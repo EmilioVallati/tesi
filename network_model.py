@@ -197,9 +197,11 @@ class NetworkModel:
             ret = self.remove_facility(t)
             # collect dead links for statistics
             for l in ret.dead_links:
-                ret_all.dead_links.append(l)
+                if l not in ret_all.dead_links:
+                    ret_all.dead_links.append(l)
             for a in ret.dead_AS:
-                ret_all.dead_AS.append(a)
+                if a not in ret_all.dead_AS:
+                    ret_all.dead_AS.append(a)
 
         #updating graph and collecting statistics
         graphAnalisys.update_graph(self.topology_graph, ret_all.dead_links)
@@ -324,18 +326,20 @@ class NetworkModel:
         #serviceDict
         print("collecting customer service data...")
         self.serviceDict = parse_service(self.cf)
+        print("service entries for countries by AS available:")
+        print(len(self.serviceDict))
 
         #list of links and graph initialization
         print("reading link list from " + str(self.rf))
         for l in read_full_links(self.rf):
             self.linksList.append(l)
-            self.topology_graph.add_edge(l[0], l[1])
+
 
         print("number of links in full topology:")
         print(len(self.linksList))
 
         #detectableLinks
-        if self.full_init:
+        if self.full_init is True:
             #build topology from full dataset
             print("generating detectable topology from scratch...")
             self.build_topology_full()
@@ -349,9 +353,10 @@ class NetworkModel:
                 print("ERROR, TOPOLOGY FILE NOT FOUND")
 
         #creating the graph object
-        self.topology_graph = graphAnalisys.makeGraph(self.linksList)
+        print("generating topology graph")
+        self.topology_graph = graphAnalisys.make_graph(self.linksList)
 
-    # returns a lost of reports with the damage for each country resulting from the loss of a list of AS
+    # returns a list of reports with the damage for each country resulting from the loss of a list of AS
     def get_service_damage(self, as_list, logging=True):
 
         ret = []

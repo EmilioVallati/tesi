@@ -16,8 +16,10 @@ class Result:
         self.dead_AS = []
 
 class DamageReport:
-    def __init__(self, country, ud=0, lp=0, tp=0):
+    def __init__(self, country, count=0, ud=0, lp=0, tp=0):
         self.cc = country
+        self.as_count = count
+        self.as_list = []
         self.users_damage = ud
         self.local_percent = lp
         self.total_percent = tp
@@ -52,6 +54,60 @@ class NetworkModel:
         # key: (src_AS, dest_as) : [fac_id1, fac_id2 ...]
         self.detectableLinks = {}
 
+    def print_dataset_stats(self):
+        print("links in topology:")
+        print(len(self.linksList))
+        print("AS in topology")
+        as_list0 = []
+        for l in self.linksList:
+            if l[0] not in as_list0:
+                as_list0.append(int(l[0]))
+            if l[1] not in as_list0:
+                as_list0.append(int(l[1]))
+        print(len(as_list0))
+        print("entries in service dataset")
+        print(len(self.serviceDict))
+        print("countries in service dataset")
+        country_count = []
+        as_count = []
+        for k in self.serviceDict:
+            if self.serviceDict[k][1] not in country_count:
+                country_count.append(self.serviceDict[k][1])
+            if self.serviceDict[k][0] not in as_count:
+                as_count.append(self.serviceDict[k][0])
+        print(len(country_count))
+        print("AS in service dataset")
+        print(len(as_count))
+        print("AS from topology present in service dataset")
+        as_in_topology = 0
+        for a in as_count:
+            if a in as_list0:
+                as_in_topology += 1
+        print(as_in_topology)
+        print("number of facilities in dataset")
+        print(len(self.facilityDict))
+        print("number of facilities with at least one AS:")
+        print(len(self.asnDict))
+        print("number of distinct AS in facilities")
+        asfac = []
+        for f in self.asnDict:
+            for fa in self.asnDict[f]:
+                if fa not in asfac:
+                    asfac.append(f)
+        print(len(asfac))
+        fac_as = []
+        for s in self.detectableLinks.keys():
+            if int(s[0]) in as_list0:
+                if s[0] not in fac_as:
+                    fac_as.append(s[0])
+
+            if int(s[1]) in as_list0:
+                if s[1] not in fac_as:
+                    fac_as.append(s[1])
+        print("number of facility AS in topology")
+        print(len(fac_as))
+        print("number of links that can be reconstructed in facilities")
+        print(len(self.detectableLinks))
 
     # returns facilities within 'size' from center
     def get_targets(self, lat, lon, size):
@@ -69,7 +125,6 @@ class NetworkModel:
 
         count = 0
         ret = Result()
-        fac = self.facilityDict[fac_id]
         del self.facilityDict[fac_id]
 
         if fac_id in self.asnDict:
@@ -204,7 +259,7 @@ class NetworkModel:
                     ret_all.dead_AS.append(a)
 
         #updating graph and collecting statistics
-        graphAnalisys.update_graph(self.topology_graph, ret_all.dead_links)
+        graphAnalisys.update_graph(self.topology_graph, ret_all.dead_links, ret_all.dead_AS)
 
         return ret_all
 
@@ -276,6 +331,14 @@ class NetworkModel:
             if conn:
                 conn.close()
 
+    def get_detected_as_num(self):
+        ret = []
+        for e in self.asnDict:
+            for asn in self.asnDict[e]:
+                if e not in ret:
+                    ret.append(e)
+        return len(ret)
+
     def build_topology_full(self):
         wrFilename3 = self.lf
         # preparing detectable topology
@@ -339,7 +402,7 @@ class NetworkModel:
         print(len(self.linksList))
 
         #detectableLinks
-        if self.full_init is True:
+        if self.full_init == 'True':
             #build topology from full dataset
             print("generating detectable topology from scratch...")
             self.build_topology_full()
@@ -351,13 +414,14 @@ class NetworkModel:
                 self.build_topology_quick()
             else:
                 print("ERROR, TOPOLOGY FILE NOT FOUND")
+                raise Exception
 
         #creating the graph object
         print("generating topology graph")
         self.topology_graph = graphAnalisys.make_graph(self.linksList)
 
     # returns a list of reports with the damage for each country resulting from the loss of a list of AS
-    def get_service_damage(self, as_list, logging=True):
+    def get_service_damage(self, as_list, logging=False):
 
         ret = []
         # measure the impact of the event on the service
@@ -368,6 +432,7 @@ class NetworkModel:
                 entries.append(self.serviceDict[k])
         # for each country code show damage
         countries = {}
+        count = {}
         # collecting entries for each cc
         for e in entries:
             if e[1] not in countries.keys():
@@ -380,14 +445,20 @@ class NetworkModel:
             local_percent = 0
             local_pop = 0
             local_internet = 0
+            count = 0
+            asn = []
             for c1 in countries[c]:
                 local_pop += c1[2]
                 local_percent += c1[3]
                 local_internet += c1[4]
+                count += 1
+                asn.append(c1[0])
             #total_pop += local_pop
             #total_internet += local_internet
 
-            r = DamageReport(str(c), local_pop, local_percent, local_internet)
+            r = DamageReport(str(c), count, local_pop, local_percent, local_internet)
+            for a in asn:
+                r.as_list.append(a)
             ret.append(r)
             if logging:
                 print(

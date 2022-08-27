@@ -14,6 +14,7 @@ class Stats:
         self.n_sample = 0
         self.user_damage = 0
         self.internet_damage = 0
+        self.isolated_nodes = 0
         self.sample_nodes = []
 
 def make_graph(linkslist):
@@ -22,9 +23,12 @@ def make_graph(linkslist):
         g.add_edge(e[0], e[1])
     return g
 
-def update_graph(g, dead_links):
+def update_graph(g, dead_links, dead_as):
     for l in dead_links:
         g.remove_edge(l[0], l[1])
+    for a in dead_as:
+        if int(a) in g.nodes:
+            g.remove_node(int(a))
 
 #takes dictionary of links and facilities, plots topology graph, useless for huge graphs
 def plot_topology(graph, file):
@@ -103,7 +107,7 @@ def get_sample_from_giant_component(graph, ns):
     g0 = graph.subgraph(gcc[0])
 
     #select ns random link samples (requires 2*ns the nodes)
-    samples = random.sample(g0.nodes, int(ns)*2)
+    samples = random.sample(g0.nodes, int(ns))
     return samples
 
 
@@ -120,6 +124,9 @@ def get_stats(g, sample, filename=None):
     stat.nodes_number = g.number_of_nodes()
     stat.size_of_giant_component = nx.number_of_nodes(g0)
     stat.disjoint_components = nx.number_connected_components(g)
+
+    #number of isolated nodes
+    stat.isolated_nodes = nx.number_of_isolates(g)
 
     #sampling nodes for aspl approx.
     l = int(len(sample)//2)

@@ -1,7 +1,9 @@
-
+import operator
 from os.path import exists
 import sqlite3
 from sqlite3 import Error
+import numpy
+
 
 import graphAnalisys
 import networkx as nx
@@ -95,6 +97,7 @@ class NetworkModel:
                 if fa not in asfac:
                     asfac.append(f)
         print(len(asfac))
+        print("number of facility AS in topology")
         fac_as = []
         for s in self.detectableLinks.keys():
             if int(s[0]) in as_list0:
@@ -104,10 +107,35 @@ class NetworkModel:
             if int(s[1]) in as_list0:
                 if s[1] not in fac_as:
                     fac_as.append(s[1])
-        print("number of facility AS in topology")
         print(len(fac_as))
         print("number of links that can be reconstructed in facilities")
         print(len(self.detectableLinks))
+        print("average number of AS per facility")
+        as_count_dict = {}
+        tot_as = 0
+        for f in self.asnDict:
+            as_count_dict[f] = len(self.asnDict[f])
+            tot_as += len(self.asnDict[f])
+        avg_as = tot_as/len(self.asnDict)
+        print(avg_as)
+        print("top 3 facilities by number of AS (facility, n* of AS)")
+        sorted_as_dict = sorted(as_count_dict.items(), key=operator.itemgetter(1), reverse=True)
+        print(sorted_as_dict[:3])
+        print("number of nodes in the topology graph")
+        print(nx.number_of_nodes(self.topology_graph))
+        print("average node degree")
+        tot_degree = 0
+        degree_dict = {}
+        for n in self.topology_graph.nodes():
+            degree_dict[n] = self.topology_graph.degree[n]
+            tot_degree += self.topology_graph.degree[n]
+        sorted_degree_dict = sorted(degree_dict.items(), key=operator.itemgetter(1), reverse=True)
+        avg = tot_degree/len(degree_dict)
+        print(avg)
+        print("top 3 AS with the largest number of neighbors (AS, degree)")
+        print(sorted_degree_dict[:3])
+
+
 
     # returns facilities within 'size' from center
     def get_targets(self, lat, lon, size):
@@ -121,11 +149,12 @@ class NetworkModel:
         return graphAnalisys.get_sample_from_giant_component(self.topology_graph, num_samples)
 
     # returns list of links deleted from topology
-    def remove_facility(self, fac_id, logging=False):
+    def remove_facility(self, fac_id, logging=True):
 
         count = 0
         ret = Result()
-        del self.facilityDict[fac_id]
+        if fac_id in self.facilityDict:
+            del self.facilityDict[fac_id]
 
         if fac_id in self.asnDict:
             del self.asnDict[fac_id]
@@ -145,11 +174,17 @@ class NetworkModel:
         new_dead_AS = []
 
         for l in ret.dead_links:
+            inv_l = (l[1], l[0])
             #removing from detected topology
-            del self.detectableLinks[l]
+            if l in self.detectableLinks.keys():
+                del self.detectableLinks[l]
+            elif inv_l in self.detectableLinks.keys():
+                del self.detectableLinks[inv_l]
             # removing from full topology if present
             if l in self.linksList:
                 self.linksList.remove(l)
+            elif inv_l in self.linksList:
+                self.linksList.remove(inv_l)
 
             # checking if single AS are still available in facilities or in full topology
             ll = list(l)
@@ -183,6 +218,10 @@ class NetworkModel:
                         if ll[0] in ee:
                             new_dead_links.append(entry)
                             self.linksList.remove(entry)
+                            # removing from detected topology
+                            if entry in self.detectableLinks.keys():
+                                del self.detectableLinks[entry]
+
                 if f2 == 0:
                     if ll[1] not in new_dead_AS:
                         print("AS " + str(l[1]) + " no longer connected!")
@@ -192,6 +231,9 @@ class NetworkModel:
                         if ll[1] in ee:
                             new_dead_links.append(entry)
                             self.linksList.remove(entry)
+                            if entry in self.detectableLinks.keys():
+                                del self.detectableLinks[entry]
+
             # by default we are assuming that un-detectable links are indestructible, therefore if the full
             # topology contains at least one link with the AS, we cannot discard it
             # looking for links in topology containing the AS

@@ -8,6 +8,7 @@ import random
 class Stats:
     def __init__(self):
         self.aspl = 0
+        self.avg_node_connectivity = 0
         self.size_of_giant_component = 0
         self.disjoint_components = 0
         self.nodes_number = 0
@@ -25,7 +26,8 @@ def make_graph(linkslist):
 
 def update_graph(g, dead_links, dead_as):
     for l in dead_links:
-        g.remove_edge(l[0], l[1])
+        if (l[0], l[1]) in g.edges:
+            g.remove_edge(l[0], l[1])
     for a in dead_as:
         if int(a) in g.nodes:
             g.remove_node(int(a))
@@ -128,14 +130,14 @@ def get_stats(g, sample, filename=None):
     #number of isolated nodes
     stat.isolated_nodes = nx.number_of_isolates(g)
 
-    #sampling nodes for aspl approx.
+    #sampling nodes for aspl and vertex connectivity approx.
     l = int(len(sample)//2)
     stat.n_sample = l
     sampled_src = sample[:l]
     sampled_dest = sample[l:]
 
     count = 0
-    sum = 0
+    sum_aspl = 0
     flag = False
     for s in sampled_src:
         for d in sampled_dest:
@@ -146,12 +148,14 @@ def get_stats(g, sample, filename=None):
                     dist = 0
                     flag = True
                 count += 1
-                sum += dist
-    avg = sum/count
+                sum_aspl += dist
+    avg = sum_aspl/count
     if flag is True:
         stat.aspl = 0
     else:
         stat.aspl = avg
+
+
 
     if filename is not None:
         with open(filename, 'w', encoding="utf-8") as wrF:
@@ -169,49 +173,80 @@ def get_stats(g, sample, filename=None):
 
 #plots variation of values, requires multiple events and list of stats
 def plot_stat_variation(statList, filename):
-
     x = np.array(range(0, len(statList)))
     y_aspl = []
     y_sogc = []
     y_discomp = []
     y_int_damage = []
     y_pop_damage = []
+    y_isolates = []
+    y_fac = []
+    y_links = []
+    y_as = []
     for i in statList:
         y_aspl.append(i.aspl)
         y_sogc.append(i.size_of_giant_component)
         y_discomp.append(i.disjoint_components)
         y_int_damage.append(i.internet_damage)
         y_pop_damage.append(i.user_damage)
+        y_isolates.append(i.isolates)
+        y_fac.append(i.fac_lost)
+        y_links.append(i.links_lost)
+        y_as.append(i.as_lost)
 
     #aspl variation plot
 
     y = np.array(y_aspl)
     plt.plot(x, y)
-    plt.savefig("aspl_" + str(filename))
+    plt.savefig(str(filename) + "/aspl_")
     plt.close()
 
     #size of giant component variation plot
 
     y = np.array(y_sogc)
     plt.plot(x, y)
-    plt.savefig("giant_component_" + str(filename))
+    plt.savefig(str(filename) + "/giant_component")
     plt.close()
 
     #disjoint components variation
 
     y = np.array(y_discomp)
     plt.plot(x, y)
-    plt.savefig("disjoin_components_" + str(filename))
+    plt.savefig(str(filename) + "/disjoin_components")
+    plt.close()
+
+    #number of isolates variation
+    y = np.array(y_isolates)
+    plt.plot(x, y)
+    plt.savefig(str(filename) + "/isolates")
     plt.close()
 
     #total internet damage progression
     y = np.array(y_int_damage)
     plt.plot(x, y)
-    plt.savefig("damage_internet_" + str(filename))
+    plt.savefig(str(filename) + "/damage_internet")
     plt.close()
 
     #total population service lost
     y = np.array(y_pop_damage)
     plt.plot(x, y)
-    plt.savefig("damage_population_" + str(filename))
+    plt.savefig(str(filename) + "/damage_population")
+    plt.close()
+
+    #facilities lost over time
+    y = np.array(y_fac)
+    plt.plot(x, y)
+    plt.savefig(str(filename) + "/facilities_lost")
+    plt.close()
+
+    #as lost over time
+    y = np.array(y_as)
+    plt.plot(x, y)
+    plt.savefig(str(filename) + "/as_lost")
+    plt.close()
+
+    #links lost over time
+    y = np.array(y_links)
+    plt.plot(x, y)
+    plt.savefig(str(filename) + "/links_lost")
     plt.close()

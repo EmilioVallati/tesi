@@ -6,7 +6,41 @@ import network_model as nw
 from utility import Config
 import networkx as nx
 
-class SingleScenarioReport:
+def get_topology(n_samples, rep_frequency, c_file, r_file, l_file, db_file, log_file, mode, full_init, v):
+    t = Topology()
+    t.verbose = v
+    t.n_samples = n_samples
+    t.rep_frequency = rep_frequency
+    # creating topology
+    t.net = nw.NetworkModel(c_file, r_file, l_file, db_file, log_file, mode, full_init)
+    try:
+        t.net.initialize()
+    except Exception:
+        sys.exit()
+
+    t.samples = t.net.get_samples(t.n_samples)
+    return t
+
+def copy_topology(origin):
+    t = Topology()
+    t.verbose = origin.verbose
+    t.n_samples = origin.n_samples
+    t.rep_frequency = origin.rep_frequency
+    # creating topology
+    t.net = nw.NetworkModel(origin.net.cf, origin.net.rf, origin.net.lf, origin.net.dbf, origin.net.logf,
+                            origin.net.mode, origin.net.full_init)
+    t.net.facilityDict = origin.net.facilityDict.copy()
+    t.net.asnDict = origin.net.asnDict.copy()
+    t.net.serviceDict = origin.net.serviceDict.copy()
+    t.net.detectableLinks = origin.net.detectableLinks.copy()
+    for l in origin.net.linksList:
+        t.net.linksList.append(l)
+    t.net.topology_graph = graphAnalisys.make_graph(t.net.linksList)
+    t.samples = t.net.get_samples(t.n_samples)
+    return t
+
+
+class EventReport:
     def __init__(self):
         self.mode = ""
         self.starting_links = 0
@@ -46,6 +80,8 @@ class SingleScenarioReport:
         print(len(self.lost_links))
         print("lost AS:")
         print(len(self.lost_AS))
+        print("damage recorded")
+        self.print_damage()
         print("global user lost")
         print(self.global_user_loss)
         print("global internet loss")
@@ -63,7 +99,7 @@ class SingleScenarioReport:
         print("ending number of disjoint components")
         print(self.ending_disjoint)
         print("number of samples")
-        print(self.num_samples)
+        print(len(self.sample_nodes))
         print("sample nodes")
         print(self.sample_nodes)
         print("starting sampled aspl")
@@ -77,84 +113,56 @@ class SingleScenarioReport:
         for r in self.damage_list:
             total_pop += r.users_damage
             total_internet += r.total_percent
-            print(
-                "country code: " + str(r.cc) +
-                " service lost for " + str(r.users_damage) + " users, " + str(r.local_percent) +
-                "% of national coverage, totaling " + str(r.total_percent) + "% of global internet infrastructure")
 
-        print("total damage: " + str(total_pop) + " users lost service, for " +
-              str(total_internet) + "% of the total internet")
 
         # generating global report
         self.global_user_loss = total_pop
         self.global_internet_loss = total_internet
 
-
-class DynamicStatsReport:
-    def __init__(self):
-        self.sampling_freq = 0
-        self.num_events = 0
-        self.max_targets = 0
-        self.avg_targets = 0
-        self.num_miss = 0
-        self.target_distribution = []
-        #users
-        self.max_damage = 0
-        self.avg_damage = 0
-        self.damage_distribution = []
-        self.damage_list = []
-        self.stat_list = []
+    def print_damage(self):
+        for r in self.damage_list:
+            print(
+                "country code: " + str(r.cc) +
+                " service lost for " + str(r.users_damage) + " users, " + str(r.local_percent) +
+                "% of national coverage, totaling " + str(r.total_percent) + "% of global internet infrastructure")
+        print("total damage: " + str(self.global_user_loss) + " users lost service, for " +
+              str(self.global_internet_loss) + "% of the total internet")
 
 
-    def print_report(self):
-        print("starting_links")
-        print(self.starting_links)
-        print("starting_AS")
-        print(self.starting_AS)
-        print("starting_facilities")
-        print(self.starting_facilities)
-        print("number of events")
-        print(self.num_events)
-        print("highest number of targets hit")
-        print(self.max_targets)
-        print("number of misses")
-        print(self.num_miss)
-        print("average facilities hit")
-        print(self.avg_targets)
-        print("damage_list")
-        print(self.damage_list)
-        print("stat_list")
-        print(self.stat_list)
-        print("lost facilities:")
-        print(self.lost_facilities)
-        print("lost links:")
-        print(self.lost_links)
-        print("lost AS:")
-        print(self.lost_AS)
-        print("isolated AS")
-        print(self.isolated_AS)
-        print("global user lost")
-        print(self.global_user_loss)
-        print("global internet loss")
-        print(self.global_internet_loss)
-        print("starting graph nodes")
-        print(self.graph_nodes_start)
-        print("lost_nodes")
-        print(self.lost_nodes)
-        print("giant component variation over time plotted in")
-        print("number of disjoint components variation over time plotted in")
-        print("number of samples")
-        print(self.num_samples)
-        print("sample nodes")
-        print(self.sample_nodes)
-        print("sampling frequency")
-        print(self.sampling_freq)
-        print("starting sampled aspl")
-        print(self.starting_aspl)
-        print("ending sampled aspl")
-        print(self.ending_aspl)
-        print("aspl variation over time plotted in")
 
+
+#argument is a list of EventResult
+def get_aggregated_result(result_list):
+    print("Events processed:")
+    print(len(result_list))
+    miss_cnt = 0
+    target_num = []
+    damage_list_pop = []
+    damage_list_int = []
+    for r in result_list:
+        if len(r.lost_facilities) == 0:
+            miss_cnt += 1
+        damage_list_pop.append(r.global_user_loss)
+        damage_list_int.append(r.global_internet_loss)
+        target_num.append(len(r.lost_facilities))
+    print("maximum targets hit")
+    print(max(target_num))
+    print("number of events that do not hit facilities")
+    print(miss_cnt)
+    print("average number of facility disconnected")
+    tot_t = sum(target_num)
+    avg_t = tot_t/len(target_num)
+    print(avg_t)
+    print("maximum damage sustained:")
+    print("users: " + str(max(damage_list_pop)))
+    print("internet %: " + str(max(damage_list_int)))
+    print("average damage:")
+    tot_u = sum(damage_list_pop)
+    avg_u = tot_u/len(damage_list_pop)
+    tot_i = sum(damage_list_int)
+    avg_i = tot_i/len(damage_list_int)
+    print("users: " + str(avg_u))
+    print("internet %: " + str(avg_i))
 
 
 class Event:
@@ -164,21 +172,73 @@ class Event:
         self.radius = dist
 
 class Topology:
-    def __init__(self, n_samples, rep_frequency, c_file, r_file, l_file, db_file, log_file, mode, full_init, v):
-        self.verbose = v
-        self.n_samples = n_samples
-        self.rep_frequency = rep_frequency
+    def __init__(self):
+        self.verbose = False
+        self.n_samples = 0
+        self.rep_frequency = 0
         # creating topology
-        self.net = nw.NetworkModel(c_file, r_file, l_file, db_file, log_file, mode, full_init)
-        try:
-            self.net.initialize()
-        except Exception:
-            sys.exit()
+        self.net = None
+        self.samples = []
 
-        self.samples = self.net.get_samples(self.n_samples)
+
+    #takes facility number list as input
+    def process_event(self, targets):
+        #generating report at the start
+        report = EventReport()
+        report.lost_facilities = targets
+        report.starting_AS = self.net.get_detected_as_num()
+        report.starting_facilities = len(self.net.asnDict)
+        report.starting_links = len(self.net.linksList)
+        report.sample_nodes = self.samples
+        report.mode = self.net.mode
+
+        # number of nodes, giant component size, number of disjoint component, isolated nodes, aspl of sample
+        start_stat = graphAnalisys.get_stats(self.net.topology_graph, self.samples)
+        report.graph_nodes_start = start_stat.nodes_number
+        report.starting_giant_component = start_stat.size_of_giant_component
+        report.starting_disjoint = start_stat.disjoint_components
+        report.starting_isolates = start_stat.isolated_nodes
+        report.starting_aspl = start_stat.aspl
+        report.starting_conn = start_stat.avg_node_connectivity
+
+        if self.verbose:
+            print("processing next event")
+            print("target facilities")
+            print(targets)
+            print("starting links: " + str(len(self.net.linksList)) + "\n")
+        #compiles report
+        res = self.net.update_topology(targets, self.verbose)
+        for l in res.dead_links:
+            report.lost_links.append(res.dead_links)
+        for a in res.dead_AS:
+            report.lost_AS.append(res.dead_AS)
+        if self.verbose:
+            remaining = len(self.net.linksList)
+            print("lost links: " + str(len(res.dead_links)) + "\n")
+            print("remaining links: " + str(remaining) + "\n")
+            print("lost AS")
+            print(len(res.dead_AS))
+        # returns a DamageReport list
+        dmg = self.net.get_service_damage(res.dead_AS)
+        for d in dmg:
+            report.damage_list.append(d)
+        #calculate total damage from list
+        report.get_global_damage()
+
+        #ending stats
+        ending_stat = graphAnalisys.get_stats(self.net.topology_graph, self.samples)
+        report.graph_nodes_end = ending_stat.nodes_number
+        report.ending_giant_component = ending_stat.size_of_giant_component
+        report.ending_aspl = ending_stat.aspl
+        report.ending_conn = ending_stat.avg_node_connectivity
+        report.ending_disjoint = ending_stat.disjoint_components
+        report.ending_isolates = ending_stat.isolated_nodes
+
+        return report
+
 
     # updates topology removing a list of target facilities, generates a single global report
-    def process_targets(self, targets, report):
+    def process_targets_old(self, targets, report):
         if self.verbose:
             print("processing next event")
             print("target facilities")
@@ -198,111 +258,4 @@ class Topology:
             print(len(res.dead_AS))
         # returns a DamageReport list
         return self.net.get_service_damage(res.dead_AS)
-
-
-
-    # produces measurements after elaborating a list of consecutive events defined by geographical coordinates,
-    # either consecutively or simultaneously
-    def run_scenario(self, event_list, sequential=False):
-        #generating report at the start
-        report = SingleScenarioReport()
-        report.starting_AS = self.net.get_detected_as_num()
-        report.starting_facilities = len(self.net.asnDict)
-        report.starting_links = len(self.net.linksList)
-        report.sample_nodes = self.samples
-        report.num_samples = self.n_samples
-        report.mode = self.net.mode
-
-        report_d = DynamicStatsReport()
-
-
-
-        #number of nodes, giant component size, number of disjoint component, isolated nodes, aspl of sample
-        start_stat = graphAnalisys.get_stats(self.net.topology_graph, self.samples)
-        report.graph_nodes_start = start_stat.nodes_number
-        report.starting_giant_component = start_stat.size_of_giant_component
-        report.starting_disjoint = start_stat.disjoint_components
-        report.starting_isolates = start_stat.isolated_nodes
-        report.starting_aspl = start_stat.aspl
-        report.num_events = len(event_list)
-
-        if sequential:
-            report_d.num_events = len(event_list)
-            report_d.sampling_freq = self.rep_frequency
-
-
-        cnt = 0
-        targets = []
-        target_nums = []
-        ev_damages = []
-        for e in event_list:
-            cnt += 1
-            ev_tgt = self.net.get_targets(e.latitude, e.longitude, e.radius)
-            if cnt%(int(len(event_list)/100)) == 0:
-                percent = int((cnt/len(event_list)*100))
-                print("progress: " + str(percent) + "%")
-
-            if not sequential:
-                if self.verbose:
-                    # building complete list of possible targets from the events before processing
-                    print("processing targets for event: lat: " + str(e.latitude) + ", lon: " + str(e.longitude)
-                          + ", radius: " + str(e.radius))
-                for t in ev_tgt:
-                    if t not in targets:
-                        targets.append(t)
-            else:
-                target_nums.append(len(ev_tgt))
-                if self.verbose:
-                    print("processing event: lat: " + str(e.latitude) + ", lon: " + str(e.longitude) + ", radius: " + str(
-                        e.radius))
-                tot_dmg = 0
-                if len(ev_tgt) > 0:
-                    dmg = self.process_targets(ev_tgt)
-                    for d in dmg:
-                        report.damage_list.append(d)
-                        tot_dmg += d.users_damage
-                ev_damages.append(tot_dmg)
-                if cnt%int(self.rep_frequency) == 0:
-                    #s = ("ev_" + str(cnt) + "_snapshot")
-                    report_d.stat_list.append(graphAnalisys.get_stats(self.net.topology_graph, self.samples))
-
-        if not sequential:
-            print("processing full event")
-            if len(targets) > 0:
-                report.lost_facilities = targets
-                damage = self.process_targets(targets, report)
-                for d in damage:
-                    report.damage_list.append(d)
-        else:
-            cnt = 0
-            tot = 0
-            for n in targets:
-                tot += n
-                if n == 0:
-                    cnt += 1
-            report_d.num_miss = cnt
-            report_d.avg_targets = tot/len(targets)
-            report_d.max_targets = max(target_nums)
-            tot_d = 0
-            for d in ev_damages:
-                tot_d += d
-            report_d.max_damage = max(ev_damages)
-            report_d.avg_damage = tot_d/len(ev_damages)
-
-
-        #generate final global damage report
-        report.get_global_damage()
-
-        #ending stats
-        ending_stat = graphAnalisys.get_stats(self.net.topology_graph, self.samples)
-        report.graph_nodes_end = ending_stat.nodes_number
-        report.ending_giant_component = ending_stat.size_of_giant_component
-        report.ending_aspl = ending_stat.aspl
-        report.ending_disjoint = ending_stat.disjoint_components
-        report.ending_isolates = ending_stat.isolated_nodes
-
-        if sequential:
-            graphAnalisys.plot_distributions(self.net.topology_graph, report_d.stat_list)
-            graphAnalisys.plot_stat_variation(report_d.stat_list)
-        return report
 

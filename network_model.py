@@ -149,7 +149,7 @@ class NetworkModel:
         return graphAnalisys.get_sample_from_giant_component(self.topology_graph, num_samples)
 
     # returns list of links deleted from topology
-    def remove_facility(self, fac_id, logging=True):
+    def remove_facility(self, fac_id, logging=False):
 
         count = 0
         ret = Result()

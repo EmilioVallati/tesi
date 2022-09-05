@@ -236,6 +236,10 @@ class Topology:
 
         return report
 
+    def set_samples(self, sample_list):
+        self.samples = []
+        for s in sample_list:
+            self.samples.append(s)
 
     # updates topology removing a list of target facilities, generates a single global report
     def process_targets_old(self, targets, report):

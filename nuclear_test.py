@@ -33,7 +33,11 @@ if __name__ == '__main__':
     topology = get_topology(conf.NUMSAMPLES, conf.NUMEVENTS, conf.CUSTOMER_FILE, conf.RELFILE, conf.LINKFILE, conf.DBFILE,
                  conf.LOGFILE, conf.MODE, conf.FULL_INIT, False)
 
-    sc = get_scenario(SCENARIO_COUNTERFORCE)
+    samples = [52510, 204943, 208880, 12296, 266539, 57842, 398123, 207489, 46175, 271343, 396414, 60914, 38253, 37011, 397612, 51190, 31537, 44421, 13283, 14058]
+
+    topology.set_samples(samples)
+
+    sc = get_scenario(SCENARIO_COUNTERVALUE)
     #plotting degree distribution only for first and last event
     #total %damage must be collected and measured thorughout the process
     #substituting the single event damage with the total before to make the graph

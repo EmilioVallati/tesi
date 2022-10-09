@@ -1,14 +1,3 @@
-Events processed:
-33
-maximum targets hit
-40
-number of events that do not hit facilities
-7
-average number of facility disconnected
-10.393939393939394
-maximum damage sustained:
-users: 57575
-internet %: 0.0014
-average damage:
-users: 5281.969696969697
-internet %: 0.00012727272727272728
+version https://git-lfs.github.com/spec/v1
+oid sha256:611d9da96e6b307a60a353d9f4a6ecdfa32add44711f9775306bb24e86bdb4ff
+size 283

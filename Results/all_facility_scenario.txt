@@ -1,0 +1,15 @@
+Events processed:
+3461
+maximum targets hit
+1
+number of events that do not hit facilities
+0
+average number of facility disconnected
+1.0
+maximum damage sustained:
+users: 15798693
+internet %: 0.3762
+average damage:
+users: 43841.52759318116
+internet %: 0.0010431089280554782
+
